@@ -1,0 +1,19 @@
+[gd_scene load_steps=2 format=3 uid="uid://d0ox1k7a4amcv"]
+
+[ext_resource type="PackedScene" uid="uid://dybgc88ummxvs" path="res://scenes/tripo_retarget_8d72f2a7-0311-4637-9dbf-60c297e2cfc1.glb" id="1_hh8ib"]
+
+[node name="AuxScene" instance=ExtResource("1_hh8ib")]
+transform = Transform3D(3, 0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0)
+
+[node name="Skeleton3D" parent="." index="0"]
+bones/3/rotation = Quaternion(0.187673, 0.799873, 0.318686, -0.472674)
+bones/4/rotation = Quaternion(0.920218, -0.243975, -0.0766825, -0.296303)
+bones/5/rotation = Quaternion(-0.430462, 0.104305, -0.243181, 0.862952)
+bones/6/rotation = Quaternion(0.803462, 0.006435, 0.0172275, 0.595072)
+bones/11/rotation = Quaternion(0.918982, 0.237093, 0.0805106, -0.304592)
+bones/15/rotation = Quaternion(0.808413, -0.0281912, -0.00818665, 0.587883)
+bones/18/rotation = Quaternion(0.187673, 0.799873, 0.318686, -0.472674)
+bones/24/rotation = Quaternion(-0.652237, 0.747703, 0.0935916, 0.0822686)
+bones/26/rotation = Quaternion(0.294325, 0.367885, -0.08746, 0.877715)
+bones/32/rotation = Quaternion(0.676639, 0.72525, 0.0739093, -0.103485)
+bones/33/rotation = Quaternion(-0.363217, 0.122417, 0.354438, 0.852914)

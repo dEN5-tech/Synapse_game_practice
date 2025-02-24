@@ -1,0 +1,38 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://dkaaugt8gbkn7"
+path.s3tc="res://.godot/imported/health_potions_1.png-5e45d7641aaff5632782e117a45be5d6.s3tc.ctex"
+metadata={
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
+}
+generator_parameters={
+"md5": "6d1fa681f80fd7833b92a21543589202"
+}
+
+[deps]
+
+source_file="res://scenes/health_potions_1.png"
+dest_files=["res://.godot/imported/health_potions_1.png-5e45d7641aaff5632782e117a45be5d6.s3tc.ctex"]
+
+[params]
+
+compress/mode=2
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=8
+roughness/src_normal="res://scenes/health_potions_3.png"
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=0

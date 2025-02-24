@@ -1,0 +1,49 @@
+[gd_scene load_steps=6 format=3 uid="uid://c1c55m3n52xq6"]
+
+[ext_resource type="Script" path="res://scripts/Gun.cs" id="1_gun"]
+[ext_resource type="PackedScene" path="res://scenes/bullet.tscn" id="2_bullet"]
+[ext_resource type="PackedScene" uid="uid://drfocaqpnywul" path="res://scenes/silver_pisto.tscn" id="3_pistol"]
+
+[sub_resource type="Animation" id="Animation_shoot"]
+resource_name = "shoot"
+length = 0.2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("GunModel:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2),
+"transitions": PackedFloat32Array(0.5, 2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0, 0, 0.1), Vector3(0, 0, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_gun"]
+_data = {
+"shoot": SubResource("Animation_shoot")
+}
+
+[node name="Gun" type="Node3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.4, -0.25, -0.5)
+script = ExtResource("1_gun")
+BulletScene = ExtResource("2_bullet")
+
+[node name="GunModel" type="Node3D" parent="."]
+
+[node name="SilverPistol" parent="GunModel" instance=ExtResource("3_pistol")]
+transform = Transform3D(-0.15, 0, -2.26494e-08, 0, 0.15, 0, 2.26494e-08, 0, -0.15, 0, 0, 0)
+
+[node name="Mesh_0" parent="GunModel/SilverPistol" index="0"]
+transform = Transform3D(-0.173648, 0, -0.984806, 0, 1, 0, 0.984806, 0, -0.173648, 1.09406, 0, 2.38419e-07)
+
+[node name="Muzzle" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -0.45)
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+"": SubResource("AnimationLibrary_gun")
+}
+
+[editable path="GunModel/SilverPistol"]

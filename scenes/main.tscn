@@ -1,0 +1,105 @@
+[gd_scene load_steps=12 format=3 uid="uid://4ojbq6k58opi"]
+
+[ext_resource type="Script" path="res://scenes/Main.cs" id="1_3efn8"]
+[ext_resource type="PackedScene" uid="uid://bgahj6odc1ffv" path="res://scenes/WorldEnvironment.tscn" id="2_1m6w2"]
+[ext_resource type="PackedScene" uid="uid://b2rf4crs01awg" path="res://scenes/player.tscn" id="2_player"]
+[ext_resource type="PackedScene" uid="uid://bnpesaq66nvbe" path="res://scenes/light.tscn" id="3_rir2h"]
+[ext_resource type="PackedScene" uid="uid://dfskk7xl1x2tu" path="res://scenes/hud.tscn" id="4_hud"]
+[ext_resource type="PackedScene" uid="uid://6qakw2dwnnid" path="res://scenes/enemy.tscn" id="5_5vwei"]
+[ext_resource type="PackedScene" uid="uid://oini5wuesgsh" path="res://scenes/smal_health_potion.tscn" id="7_dq5ii"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_ground"]
+rough = true
+bounce = 0.1
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(60, 2, 60)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_4yvr8"]
+size = Vector2(60, 60)
+subdivide_width = 32
+subdivide_depth = 32
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8p2hs"]
+albedo_color = Color(0.28, 0.3, 0.32, 1)
+metallic = 0.35
+metallic_specular = 0.45
+roughness = 0.72
+normal_enabled = true
+normal_scale = 0.8
+rim_enabled = true
+rim = 0.12
+rim_tint = 0.35
+clearcoat_enabled = true
+clearcoat = 0.15
+clearcoat_roughness = 0.4
+anisotropy = 0.08
+ao_enabled = true
+ao_light_affect = 0.8
+subsurf_scatter_enabled = true
+subsurf_scatter_strength = 0.12
+backlight = Color(0.32, 0.34, 0.36, 1)
+uv1_scale = Vector3(4, 4, 4)
+uv1_triplanar = true
+uv1_world_triplanar = true
+texture_filter = 5
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_3efn8")
+
+[node name="WorldEnvironment" parent="." instance=ExtResource("2_1m6w2")]
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
+collision_mask = 7
+physics_material_override = SubResource("PhysicsMaterial_ground")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("BoxShape3D_ground")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("PlaneMesh_4yvr8")
+surface_material_override/0 = SubResource("StandardMaterial3D_8p2hs")
+
+[node name="Walls" type="Node3D" parent="."]
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.430395, 2, 0)
+
+[node name="HUD" parent="." instance=ExtResource("4_hud")]
+process_mode = 3
+metadata/_edit_use_anchors_ = false
+
+[node name="Lights" type="Node3D" parent="."]
+
+[node name="MainLight" parent="Lights" instance=ExtResource("3_rir2h")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, 0)
+IntensityMultiplier = 1.4
+LightColor = Color(1, 0.96, 0.92, 1)
+Range = 50.0
+IsDynamic = true
+PulseSpeed = 0.1
+PulseIntensity = 0.12
+
+[node name="AccentLight1" parent="Lights" instance=ExtResource("3_rir2h")]
+transform = Transform3D(0.707107, -0.5, 0.5, 0.707107, 0.5, -0.5, 0, 0.707107, 0.707107, 10, 5, 10)
+IntensityMultiplier = 1.2
+LightColor = Color(0.9, 0.85, 0.8, 1)
+IsDynamic = true
+PulseSpeed = 0.2
+PulseIntensity = 0.15
+
+[node name="AccentLight2" parent="Lights" instance=ExtResource("3_rir2h")]
+transform = Transform3D(0.707107, 0.5, -0.5, -0.707107, 0.5, -0.5, 0, 0.707107, 0.707107, -10, 5, 10)
+IntensityMultiplier = 1.2
+LightColor = Color(0.9, 0.85, 0.8, 1)
+IsDynamic = true
+PulseSpeed = 0.2
+PulseIntensity = 0.15
+
+[node name="Enemy" parent="." instance=ExtResource("5_5vwei")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0704686, 0.460982, -8.96367)
+
+[node name="HealthPotion" parent="." instance=ExtResource("7_dq5ii")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 1, -4)

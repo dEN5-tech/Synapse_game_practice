@@ -1,0 +1,63 @@
+[gd_scene load_steps=10 format=3 uid="uid://oini5wuesgsh"]
+
+[ext_resource type="PackedScene" uid="uid://flsa73ci0g3h" path="res://scenes/small_health_potion_mesh.tscn" id="1_ch4so"]
+[ext_resource type="Script" path="res://scripts/HealthPotion.cs" id="2_script"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_potion"]
+radius = 0.15
+height = 0.8
+
+[sub_resource type="Curve" id="Curve_lifetime"]
+_data = [Vector2(0, 0), 0.0, 1.0, 0, 1, Vector2(1, 1), 1.0, 0.0, 1, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_lifetime"]
+curve = SubResource("Curve_lifetime")
+
+[sub_resource type="Gradient" id="Gradient_color"]
+offsets = PackedFloat32Array(0, 0.3, 0.7, 1)
+colors = PackedColorArray(1, 0, 0, 0, 1, 0.2, 0.2, 1, 1, 0, 0, 1, 1, 0.2, 0.2, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_color"]
+gradient = SubResource("Gradient_color")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_effect"]
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_height = 0.8
+emission_ring_radius = 0.2
+emission_ring_inner_radius = 0.1
+gravity = Vector3(0, 0.5, 0)
+radial_accel_min = 0.2
+radial_accel_max = 0.4
+scale_min = 0.02
+scale_max = 0.05
+color = Color(1, 0, 0, 1)
+color_ramp = SubResource("GradientTexture1D_color")
+alpha_curve = SubResource("CurveTexture_lifetime")
+
+[sub_resource type="SphereMesh" id="SphereMesh_particles"]
+radius = 0.05
+height = 0.1
+radial_segments = 8
+rings = 4
+
+[node name="HealthPotion" type="Area3D"]
+collision_layer = 4
+script = ExtResource("2_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+shape = SubResource("CapsuleShape3D_potion")
+
+[node name="RootNode" parent="." instance=ExtResource("1_ch4so")]
+transform = Transform3D(0.005, 0, 0, 0, 0.005, 0, 0, 0, 0.006, 0, 0.265, 0)
+
+[node name="HealingParticles" type="GPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+amount = 48
+lifetime = 1.5
+preprocess = 2.0
+visibility_aabb = AABB(-0.5, -0.5, -0.5, 1, 1, 1)
+process_material = SubResource("ParticleProcessMaterial_effect")
+draw_pass_1 = SubResource("SphereMesh_particles")

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://bbdd5h2mluh0k"]
+
+[ext_resource type="PackedScene" uid="uid://72q04yc8nd1o" path="res://scenes/health_potions.glb" id="1_nsv1m"]
+
+[node name="Potion" type="Node3D"]
+
+[node name="Sketchfab_Scene" parent="." instance=ExtResource("1_nsv1m")]

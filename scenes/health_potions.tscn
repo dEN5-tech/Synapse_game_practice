@@ -1,0 +1,17 @@
+[gd_scene load_steps=2 format=3 uid="uid://ordskoud8s6t"]
+
+[ext_resource type="PackedScene" uid="uid://72q04yc8nd1o" path="res://scenes/health_potions.glb" id="1_ocrxp"]
+
+[node name="Sketchfab_Scene" instance=ExtResource("1_ocrxp")]
+
+[node name="Butelka_003" parent="Sketchfab_model/a_hp_potions_fbx/RootNode" index="3"]
+visible = false
+
+[node name="Butelka_010" parent="Sketchfab_model/a_hp_potions_fbx/RootNode" index="13"]
+visible = false
+
+[node name="Butelka_006" parent="Sketchfab_model/a_hp_potions_fbx/RootNode" index="16"]
+visible = false
+
+[node name="Butelka_002" parent="Sketchfab_model/a_hp_potions_fbx/RootNode" index="20"]
+visible = false

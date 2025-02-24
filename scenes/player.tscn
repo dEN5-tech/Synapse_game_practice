@@ -1,0 +1,54 @@
+[gd_scene load_steps=6 format=3 uid="uid://b2rf4crs01awg"]
+
+[ext_resource type="Script" path="res://scripts/Player.cs" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://c1c55m3n52xq6" path="res://scenes/gun.tscn" id="2_gun"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+radius = 0.35
+height = 1.7
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
+radius = 0.35
+height = 1.7
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_player"]
+albedo_color = Color(0.2, 0.7, 1, 1)
+metallic = 0.3
+roughness = 0.7
+
+[node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 5
+floor_snap_length = 0.2
+script = ExtResource("1_player")
+SprintMultiplier = 1.6
+MouseSensitivity = 0.003
+CameraHeight = 1.65
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+mesh = SubResource("CapsuleMesh_player")
+surface_material_override/0 = SubResource("StandardMaterial3D_player")
+
+[node name="CameraMount" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, 0)
+
+[node name="Camera3D" type="Camera3D" parent="CameraMount"]
+cull_mask = 1048573
+current = true
+far = 500.0
+
+[node name="Gun" parent="CameraMount/Camera3D" instance=ExtResource("2_gun")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, -0.3, -0.8)
+
+[node name="WeaponCamera" type="Camera3D" parent="CameraMount/Camera3D"]
+cull_mask = 2
+near = 0.01
+far = 2.0
+
+[node name="HeadCheck" type="RayCast3D" parent="CameraMount"]
+target_position = Vector3(0, 0.5, 0)
