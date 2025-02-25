@@ -10,6 +10,8 @@ public partial class HUD : Control
     private Panel _ammoPanel;
     private Gun _gun;
     private Player _player;
+    private Tween _healthTween;
+    private Tween _healthPulseTween;
     
     // Menu elements
     private Panel _menuBackdrop;
@@ -18,6 +20,11 @@ public partial class HUD : Control
     private const float MENU_ANIMATION_SPEED = 0.3f;
     private const float BACKDROP_OPACITY = 0.4f;
     private Tween _currentTween;
+    
+    private Panel _deathScreen;
+    private Label _respawnLabel;
+    private float _respawnTimer;
+    private bool _isDeathScreenVisible = false;
     
     [Export]
     public float MaxHealth = 100.0f;
@@ -41,21 +48,33 @@ public partial class HUD : Control
         _ammoPanel = GetNode<Panel>("AmmoPanel");
         _menuBackdrop = GetNode<Panel>("MenuBackdrop");
         _menuPanel = GetNode<Panel>("MenuPanel");
+        _deathScreen = GetNode<Panel>("DeathScreen");
+        _respawnLabel = GetNode<Label>("DeathScreen/RespawnLabel");
         
         // Get references to game elements
         _gun = GetNode<Gun>("../Player/CameraMount/Camera3D/Gun");
         _player = GetNode<Player>("../Player");
         
+        // Connect to player signals if available
+        if (_player != null)
+        {
+            _player.PlayerDied += OnPlayerDied;
+            _player.PlayerRespawned += OnPlayerRespawned;
+        }
+        
         // Initial UI update
         UpdateHealthDisplay();
         UpdateAmmoDisplay();
         
-        // Initialize menu in closed state
+        // Initialize menu and death screen in closed state
         _menuBackdrop.Modulate = new Color(1, 1, 1, 0);
         _menuBackdrop.Visible = false;
-        _menuPanel.Position = new Vector2(-300, 0); // Start off-screen
+        _menuPanel.Position = new Vector2(-300, 0);
         _menuPanel.Visible = false;
         _isMenuOpen = false;
+        
+        _deathScreen.Visible = false;
+        _isDeathScreenVisible = false;
         
         // Ensure mouse is hidden and captured at start
         Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -66,6 +85,16 @@ public partial class HUD : Control
 
     public override void _Process(double delta)
     {
+        // Update respawn timer if death screen is visible
+        if (_isDeathScreenVisible && _respawnLabel != null)
+        {
+            _respawnTimer -= (float)delta;
+            if (_respawnTimer > 0)
+            {
+                _respawnLabel.Text = $"Respawning in {_respawnTimer:F1} seconds...";
+            }
+        }
+        
         // Update UI elements
         UpdateHealthDisplay();
         UpdateAmmoDisplay();
@@ -175,6 +204,10 @@ public partial class HUD : Control
         
         if (_healthBar != null)
         {
+            // Kill any existing health animations
+            _healthTween?.Kill();
+            _healthPulseTween?.Kill();
+            
             // Update health bar color based on health percentage
             float healthPercentage = CurrentHealth / MaxHealth;
             Color barColor = new Color(
@@ -184,25 +217,37 @@ public partial class HUD : Control
             );
             
             // Animate health bar
-            var tween = CreateTween();
-            tween.TweenProperty(_healthBar, "modulate", barColor, 0.2f)
+            _healthTween = CreateTween();
+            _healthTween.TweenProperty(_healthBar, "modulate", barColor, 0.2f)
                 .SetTrans(Tween.TransitionType.Sine)
                 .SetEase(Tween.EaseType.Out);
             
-            // Add pulse effect when health is low
+            // Add effects based on health state
             if (healthPercentage < 0.3f)
             {
-                var pulseTween = CreateTween();
-                pulseTween.SetLoops(); // Set to infinite loops
-                pulseTween.TweenProperty(_healthBar, "modulate:a", 0.6f, 0.5f)
+                // Low health pulse effect
+                _healthPulseTween = CreateTween();
+                _healthPulseTween.SetLoops(); // Set to infinite loops
+                _healthPulseTween.TweenProperty(_healthBar, "modulate:a", 0.6f, 0.5f)
                     .SetTrans(Tween.TransitionType.Sine)
                     .SetEase(Tween.EaseType.InOut);
-                pulseTween.TweenProperty(_healthBar, "modulate:a", 1.0f, 0.5f)
+                _healthPulseTween.TweenProperty(_healthBar, "modulate:a", 1.0f, 0.5f)
                     .SetTrans(Tween.TransitionType.Sine)
                     .SetEase(Tween.EaseType.InOut);
             }
+            else if (healthPercentage > _lastHealthPercentage)
+            {
+                // Healing effect - green flash
+                var healTween = CreateTween();
+                healTween.TweenProperty(_healthBar, "modulate", new Color(0.2f, 1.0f, 0.2f, 1.0f), 0.1f);
+                healTween.TweenProperty(_healthBar, "modulate", barColor, 0.2f);
+            }
+            
+            _lastHealthPercentage = healthPercentage;
         }
     }
+    
+    private float _lastHealthPercentage = 1.0f;
     
     private void UpdateAmmoDisplay()
     {
@@ -226,8 +271,14 @@ public partial class HUD : Control
     
     public void UpdateHealth(float newHealth)
     {
+        float oldHealth = CurrentHealth;
         CurrentHealth = Mathf.Clamp(newHealth, 0, MaxHealth);
-        UpdateHealthDisplay();
+        
+        // Only update display if health actually changed
+        if (!Mathf.IsEqualApprox(oldHealth, CurrentHealth))
+        {
+            UpdateHealthDisplay();
+        }
     }
     
     public void UpdateAmmo(int newAmmo)
@@ -249,5 +300,54 @@ public partial class HUD : Control
     private void OnQuitPressed()
     {
         GetTree().Quit();
+    }
+
+    public void ShowDeathScreen()
+    {
+        if (_deathScreen != null)
+        {
+            _deathScreen.Visible = true;
+            _isDeathScreenVisible = true;
+            _respawnTimer = _player?.RespawnDelay ?? 3.0f;
+            
+            // Show mouse cursor
+            Input.MouseMode = Input.MouseModeEnum.Visible;
+            
+            // Create fade in effect
+            var tween = CreateTween();
+            tween.TweenProperty(_deathScreen, "modulate", new Color(1, 1, 1, 1), 0.5f)
+                .SetTrans(Tween.TransitionType.Sine)
+                .SetEase(Tween.EaseType.Out);
+        }
+    }
+
+    public void HideDeathScreen()
+    {
+        if (_deathScreen != null)
+        {
+            // Create fade out effect
+            var tween = CreateTween();
+            tween.TweenProperty(_deathScreen, "modulate", new Color(1, 1, 1, 0), 0.5f)
+                .SetTrans(Tween.TransitionType.Sine)
+                .SetEase(Tween.EaseType.Out);
+            
+            tween.TweenCallback(Callable.From(() => {
+                _deathScreen.Visible = false;
+                _isDeathScreenVisible = false;
+            }));
+            
+            // Hide mouse cursor
+            Input.MouseMode = Input.MouseModeEnum.Captured;
+        }
+    }
+
+    private void OnPlayerDied()
+    {
+        ShowDeathScreen();
+    }
+
+    private void OnPlayerRespawned()
+    {
+        HideDeathScreen();
     }
 } 

@@ -3,6 +3,12 @@ using System;
 
 public partial class Player : CharacterBody3D
 {
+    [Signal]
+    public delegate void PlayerDiedEventHandler();
+    
+    [Signal]
+    public delegate void PlayerRespawnedEventHandler();
+    
     [Export]
     public float BaseMovementSpeed = 7.0f;
     
@@ -46,6 +52,9 @@ public partial class Player : CharacterBody3D
     public float CurrentHealth = 100.0f;
     
     [Export]
+    public float HealCooldownTime = 0.5f;
+    
+    [Export]
     public float WeaponBobSpeed = 14.0f;
     
     [Export]
@@ -53,6 +62,12 @@ public partial class Player : CharacterBody3D
     
     [Export]
     public float WeaponSwayAmount = 0.1f;
+    
+    [Export]
+    public float RespawnDelay = 3.0f;  // Time before respawn in seconds
+    
+    [Export]
+    public NodePath RespawnPointPath;  // Path to the respawn point node
 
     private bool _isOnGround = false;
     private bool _isSprinting = false;
@@ -71,130 +86,128 @@ public partial class Player : CharacterBody3D
     private Vector3 _gunInitialPosition;
     private float _bobTimer = 0.0f;
     private Vector3 _currentGunOffset = Vector3.Zero;
+    private float _healCooldown = 0.0f;
+    private Vector2 _lastMouseMotion = Vector2.Zero;
+    private bool _isDead = false;
+    private Vector3 _initialPosition;
+    private Vector3 _initialRotation;
+    private Node3D _respawnPoint;
 
     public override void _Ready()
     {
-        // Get references to nodes
-        _cameraMount = GetNode<Node3D>("CameraMount");
+        // Get node references
         _camera = GetNode<Camera3D>("CameraMount/Camera3D");
+        _cameraMount = GetNode<Node3D>("CameraMount");
         _gun = GetNode<Gun>("CameraMount/Camera3D/Gun");
-        _hud = GetNode<HUD>("/root/Main/HUD");
         
-        // Set up camera and gun
-        _camera.Position = new Vector3(0, CameraHeight, 0);
-        _camera.Fov = 75.0f;
+        // Store initial transform for respawning
+        _initialPosition = GlobalPosition;
+        _initialRotation = Rotation;
+        
+        // Get respawn point if specified
+        if (!string.IsNullOrEmpty(RespawnPointPath))
+        {
+            _respawnPoint = GetNode<Node3D>(RespawnPointPath);
+        }
+        
+        // Capture mouse for FPS controls
+        Input.MouseMode = Input.MouseModeEnum.Captured;
         
         if (_gun != null)
         {
             _gunInitialPosition = _gun.Position;
         }
         
-        // Initialize HUD
+        // Initialize HUD reference
+        _hud = GetNode<HUD>("/root/Main/HUD");
         if (_hud != null)
         {
-            _hud.MaxHealth = MaxHealth;
-            _hud.CurrentHealth = CurrentHealth;
             _hud.UpdateHealth(CurrentHealth);
         }
-        
-        // Capture mouse
-        Input.MouseMode = Input.MouseModeEnum.Captured;
     }
 
     public override void _Process(double delta)
     {
-        // Handle camera smoothing
-        _currentCameraRotation = _currentCameraRotation.Lerp(_targetCameraRotation, (float)delta * CameraSmoothing);
-        
-        // Handle recoil recovery
-        if (_recoilOffset != 0)
-        {
-            _recoilOffset = Mathf.MoveToward(_recoilOffset, _targetRecoilOffset, RecoilRecoverySpeed * (float)delta);
-            _targetRecoilOffset = Mathf.MoveToward(_targetRecoilOffset, 0, RecoilRecoverySpeed * 0.5f * (float)delta);
-        }
-        
-        // Update weapon position
-        if (_gun != null)
-        {
-            UpdateWeaponPosition(delta);
-        }
-        
-        UpdateCameraRotation();
+
     }
 
     private void UpdateWeaponPosition(double delta)
     {
-        Vector3 targetPos = _gunInitialPosition;
+        if (_gun == null) return;
         
-        // Add weapon bob when moving
-        if (_direction.Length() > 0.1f && _isOnGround)
+        // Calculate weapon bob
+        float bobSpeed = WeaponBobSpeed;
+        float bobAmount = WeaponBobAmount;
+        
+        if (_direction != Vector3.Zero && IsOnFloor())
         {
-            _bobTimer += (float)delta * WeaponBobSpeed * (_isSprinting ? 1.5f : 1.0f);
-            float bobX = Mathf.Cos(_bobTimer) * WeaponBobAmount;
-            float bobY = Mathf.Sin(_bobTimer * 2) * WeaponBobAmount;
-            targetPos += new Vector3(bobX, bobY, 0);
+            _bobTimer += (float)delta * bobSpeed;
+            if (Input.IsActionPressed("sprint"))
+            {
+                _bobTimer += (float)delta * bobSpeed * 0.5f;
+            }
         }
         else
         {
             _bobTimer = 0;
         }
         
-        // Add weapon sway based on mouse movement
-        Vector3 sway = new Vector3(
-            -_currentCameraRotation.X * WeaponSwayAmount,
-            -_currentCameraRotation.Y * WeaponSwayAmount,
-            0
-        );
-        targetPos += sway;
+        // Calculate weapon position
+        Vector3 targetPos = _gunInitialPosition;
+        targetPos.Y += Mathf.Sin(_bobTimer) * bobAmount;
+        targetPos.X += Mathf.Cos(_bobTimer * 0.5f) * bobAmount * 0.5f;
         
-        // Smoothly interpolate to target position
-        _currentGunOffset = _currentGunOffset.Lerp(targetPos - _gunInitialPosition, (float)delta * 8.0f);
-        _gun.Position = _gunInitialPosition + _currentGunOffset;
+        // Apply weapon sway based on stored mouse motion
+        targetPos.X -= _lastMouseMotion.X * WeaponSwayAmount * 0.001f;
+        targetPos.Y -= _lastMouseMotion.Y * WeaponSwayAmount * 0.001f;
+        
+        // Reset mouse motion (smooth decay)
+        _lastMouseMotion = _lastMouseMotion.Lerp(Vector2.Zero, (float)delta * 10.0f);
+        
+        // Smooth weapon movement
+        _currentGunOffset = _currentGunOffset.Lerp(targetPos, (float)delta * 10.0f);
+        _gun.Position = _currentGunOffset;
+        
+        // Handle recoil recovery
+        if (_recoilOffset > 0)
+        {
+            _recoilOffset = Mathf.MoveToward(_recoilOffset, 0, RecoilRecoverySpeed * (float)delta);
+            _camera.Rotation = new Vector3(_targetCameraRotation.X - _recoilOffset, 
+                _targetCameraRotation.Y, _targetCameraRotation.Z);
+        }
     }
 
     public override void _Input(InputEvent @event)
     {
+        // Handle mouse look
         if (@event is InputEventMouseMotion mouseMotion && Input.MouseMode == Input.MouseModeEnum.Captured)
         {
-            // Horizontal rotation (around Y axis)
-            _rotationY = (_rotationY - mouseMotion.Relative.X * MouseSensitivity) % (2 * Mathf.Pi);
-            if (_rotationY < -Mathf.Pi)
-                _rotationY += 2 * Mathf.Pi;
-            else if (_rotationY > Mathf.Pi)
-                _rotationY -= 2 * Mathf.Pi;
+            _rotationX -= mouseMotion.Relative.Y * MouseSensitivity;
+            _rotationY -= mouseMotion.Relative.X * MouseSensitivity;
             
-            // Vertical rotation (around X axis) with clamping
-            _rotationX = Mathf.Clamp(
-                _rotationX - mouseMotion.Relative.Y * MouseSensitivity,
-                -Mathf.Pi/2.1f,
-                Mathf.Pi/2.1f
-            );
-
-            _targetCameraRotation = new Vector3(_rotationX, _rotationY, 0);
+            // Store mouse motion for weapon sway
+            _lastMouseMotion = mouseMotion.Relative;
+            
+            // Clamp vertical rotation to prevent over-rotation
+            _rotationX = Mathf.Clamp(_rotationX, Mathf.DegToRad(-89), Mathf.DegToRad(89));
+            
+            UpdateCameraRotation();
         }
-
-        // Handle shooting and mouse capture toggle
-        if (@event.IsActionPressed("shoot") && Input.MouseMode == Input.MouseModeEnum.Captured)
+        
+        // Toggle mouse capture with Escape
+        if (@event.IsActionPressed("ui_cancel"))
         {
-            _gun?.Shoot();
-        }
-        else if (@event.IsActionPressed("ui_cancel"))
-        {
-            Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured 
-                ? Input.MouseModeEnum.Visible 
-                : Input.MouseModeEnum.Captured;
+            Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured ? 
+                Input.MouseModeEnum.Visible : Input.MouseModeEnum.Captured;
         }
     }
 
     private void UpdateCameraRotation()
     {
-        // Enhanced camera rotation with improved interpolation
-        Quaternion yaw = Quaternion.FromEuler(new Vector3(0, _currentCameraRotation.Y, 0));
-        Quaternion pitch = Quaternion.FromEuler(new Vector3(_currentCameraRotation.X + _recoilOffset, 0, 0));
-        
-        // Apply rotations with enhanced smoothing
-        _cameraMount.Quaternion = yaw;
-        _camera.Quaternion = pitch;
+        // Update camera rotation
+        _targetCameraRotation = new Vector3(_rotationX, 0, 0);
+        _cameraMount.Rotation = new Vector3(0, _rotationY, 0);
+        _camera.Rotation = _targetCameraRotation;
     }
 
     public void ApplyRecoil(float recoilAmount)
@@ -205,157 +218,103 @@ public partial class Player : CharacterBody3D
     public override void _PhysicsProcess(double delta)
     {
         Vector3 velocity = Velocity;
-        bool wasOnGround = _isOnGround;
-        _isOnGround = IsOnFloor();
         
-        // Enhanced input handling
-        float inputX = Input.GetActionStrength("move_right") - Input.GetActionStrength("move_left");
-        float inputZ = Input.GetActionStrength("move_forward") - Input.GetActionStrength("move_backward");
-        
-        // Improved movement direction calculation
-        Vector3 forward = -_cameraMount.GlobalTransform.Basis.Z;
-        forward.Y = 0;
-        forward = forward.Normalized();
-        
-        Vector3 right = _cameraMount.GlobalTransform.Basis.X;
-        right.Y = 0;
-        right = right.Normalized();
-        
-        // Enhanced movement vector combination with better normalization
-        _direction = (forward * inputZ + right * inputX);
-        if (_direction.LengthSquared() > 1.0f)
-            _direction = _direction.Normalized();
-        
-        // Improved sprint handling with smoother transition
-        bool wantToSprint = Input.IsActionPressed("sprint");
-        float sprintTransition = Mathf.MoveToward(_isSprinting ? 1.0f : 0.0f, wantToSprint ? 1.0f : 0.0f, (float)delta * 7.0f);
-        _isSprinting = sprintTransition > 0.5f;
-        float currentSpeed = Mathf.Lerp(BaseMovementSpeed, BaseMovementSpeed * SprintMultiplier, sprintTransition);
-
-        // Ground movement
-        if (_isOnGround)
+        // Add gravity
+        if (!IsOnFloor())
         {
-            // Landing impact
-            if (!wasOnGround && velocity.Y < -5.0f)
-            {
-                // Optional: Add landing effect here
-                _targetRecoilOffset += Mathf.DegToRad(-velocity.Y * 0.2f);
-            }
-
-            // Get horizontal velocity
-            Vector2 horizontalVel = new Vector2(velocity.X, velocity.Z);
-            float speed = horizontalVel.Length();
+            velocity.Y -= Gravity * (float)delta;
+        }
+        
+        // Handle jump
+        if (Input.IsActionPressed("jump") && IsOnFloor())
+        {
+            velocity.Y = JumpForce;
+        }
+        
+        // Get input direction
+        Vector2 inputDir = Input.GetVector("move_left", "move_right", "move_forward", "move_backward");
+        _direction = new Vector3(inputDir.X, 0, inputDir.Y).Normalized();
+        
+        if (_direction != Vector3.Zero)
+        {
+            // Transform direction relative to camera rotation
+            _direction = _direction.Rotated(Vector3.Up, _cameraMount.Rotation.Y);
             
-            // Apply friction
-            if (_direction == Vector3.Zero && speed > 0)
+            // Calculate target velocity
+            float speed = BaseMovementSpeed;
+            if (Input.IsActionPressed("sprint"))
             {
-                float drop = Friction * (float)delta;
-                
-                // Use StopSpeed to prevent micro-sliding
-                if (speed < StopSpeed)
+                speed *= SprintMultiplier;
+            }
+            
+            Vector3 targetVelocity = _direction * speed;
+            
+            // Apply acceleration
+            float accel = IsOnFloor() ? AccelerationSpeed : (AccelerationSpeed * AirControl);
+            velocity.X = Mathf.MoveToward(velocity.X, targetVelocity.X, accel * (float)delta);
+            velocity.Z = Mathf.MoveToward(velocity.Z, targetVelocity.Z, accel * (float)delta);
+        }
+        else
+        {
+            // Apply friction when no input
+            if (IsOnFloor())
+            {
+                float speedH = new Vector2(velocity.X, velocity.Z).Length();
+                if (speedH < StopSpeed)
                 {
                     velocity.X = 0;
                     velocity.Z = 0;
                 }
                 else
                 {
-                    float scale = Mathf.Max(speed - drop, 0) / speed;
-                    velocity.X *= scale;
-                    velocity.Z *= scale;
-                }
-            }
-            
-            // Accelerate if there's input
-            if (_direction != Vector3.Zero)
-            {
-                float currentSpeedH = new Vector2(velocity.X, velocity.Z).Length();
-                float addSpeed = Mathf.Clamp(currentSpeed - currentSpeedH, 0, AccelerationSpeed * (float)delta);
-                
-                velocity.X += _direction.X * addSpeed;
-                velocity.Z += _direction.Z * addSpeed;
-                
-                // Limit maximum speed
-                horizontalVel = new Vector2(velocity.X, velocity.Z);
-                if (horizontalVel.LengthSquared() > currentSpeed * currentSpeed)
-                {
-                    horizontalVel = horizontalVel.Normalized() * currentSpeed;
-                    velocity.X = horizontalVel.X;
-                    velocity.Z = horizontalVel.Y;
+                    float drop = speedH * Friction * (float)delta;
+                    velocity.X *= Mathf.Max(0, speedH - drop) / speedH;
+                    velocity.Z *= Mathf.Max(0, speedH - drop) / speedH;
                 }
             }
         }
-        // Air movement with improved control
-        else
-        {
-            if (_direction != Vector3.Zero)
-            {
-                Vector3 airVelocity = _direction * (currentSpeed * AirControl);
-                float accelerationFactor = AccelerationSpeed * AirControl * (float)delta;
-                
-                // Preserve more momentum while airborne
-                velocity.X = Mathf.MoveToward(velocity.X, airVelocity.X, accelerationFactor);
-                velocity.Z = Mathf.MoveToward(velocity.Z, airVelocity.Z, accelerationFactor);
-                
-                // Apply air resistance
-                float airDrag = Mathf.Min(1.0f, 0.01f * (float)delta);
-                velocity.X *= (1.0f - airDrag);
-                velocity.Z *= (1.0f - airDrag);
-            }
-        }
-
-        // Handle jumping and gravity
-        if (!_isOnGround)
-        {
-            velocity.Y -= Gravity * (float)delta;
-        }
-        else
-        {
-            if (velocity.Y < 0)
-                velocity.Y = 0;
-                
-            if (Input.IsActionJustPressed("jump"))
-            {
-                velocity.Y = JumpForce;
-                _isOnGround = false;
-            }
-        }
-
-        // Apply final velocity
+        
+        // Update weapon position
+        UpdateWeaponPosition(delta);
+        
+        // Update velocity
         Velocity = velocity;
         MoveAndSlide();
+        
+        // Update health cooldown
+        if (_healCooldown > 0)
+        {
+            _healCooldown -= (float)delta;
+        }
     }
 
     public void TakeDamage(float amount)
     {
         CurrentHealth = Mathf.Max(0, CurrentHealth - amount);
-        if (_hud != null)
-        {
-            _hud.UpdateHealth(CurrentHealth);
-        }
-        
+        _healCooldown = HealCooldownTime;
+
         if (CurrentHealth <= 0)
         {
             Die();
         }
     }
     
+    public bool CanBeHealed()
+    {
+        return CurrentHealth < MaxHealth && _healCooldown <= 0;
+    }
+    
     public void Heal(float amount)
     {
-        CurrentHealth = Mathf.Min(MaxHealth, CurrentHealth + amount);
-        if (_hud != null)
+        if (CanBeHealed())
         {
-            _hud.UpdateHealth(CurrentHealth);
+            CurrentHealth = Mathf.Min(MaxHealth, CurrentHealth + amount);
         }
     }
     
     private void Die()
     {
-        // Handle player death
-        // For now, just reset health
-        CurrentHealth = MaxHealth;
-        if (_hud != null)
-        {
-            _hud.UpdateHealth(CurrentHealth);
-        }
+        // Implement death behavior here
+        QueueFree();
     }
 } 

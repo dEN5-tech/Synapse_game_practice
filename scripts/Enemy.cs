@@ -33,6 +33,9 @@ public partial class Enemy : CharacterBody3D
     [Export]
     public PackedScene HealthPotionScene { get; set; }
     
+    [Signal]
+    public delegate void PlayerDetectedEventHandler(Node3D player);
+    
     private float _currentHealth;
     private Vector3 _velocity = Vector3.Zero;
     private float _attackTimer = 0.0f;
@@ -50,93 +53,80 @@ public partial class Enemy : CharacterBody3D
 
     public override void _Ready()
     {
+        // Initialize health
         _currentHealth = MaxHealth;
-        _player = GetNode<Node3D>("/root/Main/Player");
+        
+        // Get references to nodes
         _animationPlayer = GetNode<AnimationPlayer>("AnimationPlayer");
-        _auxAnimationPlayer = GetNode<AnimationPlayer>("EnemyModel/AuxScene/AnimationPlayer");
         _healthBar = GetNode<ProgressBar>("HealthBar/SubViewport/ProgressBar");
         
-        // Initialize health bar
+        // Set up health bar
         if (_healthBar != null)
         {
             _healthBar.MaxValue = MaxHealth;
             _healthBar.Value = _currentHealth;
         }
         
-        // Initialize animation settings
-        if (_auxAnimationPlayer != null)
+        // Find player using scene tree
+        CallDeferred("FindPlayer");
+    }
+
+    private void FindPlayer()
+    {
+        // Try to find player in the scene tree
+        var players = GetTree().GetNodesInGroup("Player");
+        if (players != null && players.Count > 0)
         {
-            if (_auxAnimationPlayer.HasAnimation(WALK_ANIM))
+            foreach (var node in players)
             {
-                // Configure animation for proper looping
-                var walkAnim = _auxAnimationPlayer.GetAnimation(WALK_ANIM);
-                walkAnim.LoopMode = Animation.LoopModeEnum.Linear;
-                
-                // Start the walking animation with custom playback settings
-                _auxAnimationPlayer.Play(WALK_ANIM);
-                _auxAnimationPlayer.SpeedScale = 0.0f;
-                
-                _isAnimationInitialized = true;
+                if (node is Node3D player)
+                {
+                    _player = player;
+                    EmitSignal(SignalName.PlayerDetected, player);
+                    break;
+                }
             }
         }
     }
 
     public override void _Process(double delta)
     {
-        if (_auxAnimationPlayer != null && _isAnimationInitialized)
+        // Update attack cooldown
+        if (_attackTimer > 0)
         {
-            // Update animation position for continuous looping
-            var currentPos = _auxAnimationPlayer.CurrentAnimationPosition;
-            if (currentPos >= WALK_ANIM_LENGTH)
-            {
-                _auxAnimationPlayer.Seek(0);
-            }
+            _attackTimer -= (float)delta;
+        }
+
+        // Update chase cooldown
+        if (_chaseTimer > 0)
+        {
+            _chaseTimer -= (float)delta;
         }
     }
 
     public override void _PhysicsProcess(double delta)
     {
-        if (!IsInstanceValid(this) || !IsInstanceValid(_player))
-            return;
+        // Check if player reference is still valid
+        if (_player == null || !IsInstanceValid(_player))
+        {
+            // Try to find player again using scene tree
+            FindPlayer();
+            
+            // If still no valid player, just handle basic physics and return
+            if (_player == null || !IsInstanceValid(_player))
+            {
+                Vector3 currentVelocity = Velocity;
+                if (!IsOnFloor())
+                {
+                    currentVelocity.Y -= Gravity * (float)delta;
+                }
+                Velocity = currentVelocity;
+                MoveAndSlide();
+                return;
+            }
+        }
 
         Vector3 velocity = Velocity;
-        Vector3 toPlayer = _player.GlobalPosition - GlobalPosition;
-        float distanceToPlayer = toPlayer.Length();
-        
-        // Movement logic based on distance to player
-        if (distanceToPlayer > MinimumRange && distanceToPlayer < ChaseRange)
-        {
-            Vector3 moveDirection = toPlayer.Normalized();
-            moveDirection.Y = 0;  // Keep movement on horizontal plane
-            
-            // Apply movement
-            velocity = velocity.Lerp(moveDirection * MovementSpeed, (float)delta * 5.0f);
-        }
-        else if (distanceToPlayer <= AttackRange && distanceToPlayer > MinimumRange)
-        {
-            _attackTimer += (float)delta;
-            if (_attackTimer >= AttackCooldown)
-            {
-                _attackTimer = 0;
-                PerformMeleeAttack();
-            }
-            velocity = Vector3.Zero;
-        }
-        else if (distanceToPlayer <= MinimumRange)
-        {
-            // Back away if too close
-            Vector3 awayFromPlayer = -toPlayer.Normalized() * MovementSpeed;
-            awayFromPlayer.Y = _velocity.Y;
-            velocity = awayFromPlayer;
-        }
-        else
-        {
-            // Stop moving if player is too far
-            velocity.X = 0;
-            velocity.Z = 0;
-            _isChasing = false;
-            _chaseTimer = 0;
-        }
         
         // Apply gravity
         if (!IsOnFloor())
@@ -144,51 +134,129 @@ public partial class Enemy : CharacterBody3D
             velocity.Y -= Gravity * (float)delta;
         }
         
+        // Get direction to player
+        Vector3 toPlayer = Vector3.Zero;
+        float distanceToPlayer = float.MaxValue;
+        
+        try
+        {
+            toPlayer = _player.GlobalPosition - GlobalPosition;
+            distanceToPlayer = toPlayer.Length();
+        }
+        catch (ObjectDisposedException)
+        {
+            _player = null;
+            Velocity = velocity;
+            MoveAndSlide();
+            return;
+        }
+        
+        // Look at player (only Y rotation)
+        if (!_isAttacking && distanceToPlayer <= ChaseRange)
+        {
+            try
+            {
+                Vector3 lookAtPos = new Vector3(_player.GlobalPosition.X, GlobalPosition.Y, _player.GlobalPosition.Z);
+                LookAt(lookAtPos);
+            }
+            catch (ObjectDisposedException)
+            {
+                _player = null;
+                return;
+            }
+        }
+        
+        // Handle movement and attacks
+        if (distanceToPlayer <= AttackRange && _attackTimer <= 0 && !_isAttacking)
+        {
+            // Perform attack
+            PerformMeleeAttack();
+            _attackTimer = AttackCooldown;
+        }
+        else if (distanceToPlayer <= ChaseRange && distanceToPlayer > MinimumRange && _chaseTimer <= 0)
+        {
+            // Chase player
+            Vector3 direction = toPlayer.Normalized();
+            direction.Y = 0; // Keep movement on XZ plane
+            
+            velocity.X = direction.X * MovementSpeed;
+            velocity.Z = direction.Z * MovementSpeed;
+            
+            _isChasing = true;
+            
+            // Update walking animation speed based on velocity
+            if (_auxAnimationPlayer != null && IsInstanceValid(_auxAnimationPlayer))
+            {
+                float speedRatio = new Vector2(velocity.X, velocity.Z).Length() / MovementSpeed;
+                _auxAnimationPlayer.SpeedScale = speedRatio;
+            }
+        }
+        else
+        {
+            // Stop movement
+            velocity.X = Mathf.MoveToward(velocity.X, 0, MovementSpeed);
+            velocity.Z = Mathf.MoveToward(velocity.Z, 0, MovementSpeed);
+            
+            _isChasing = false;
+            
+            // Stop walking animation
+            if (_auxAnimationPlayer != null && IsInstanceValid(_auxAnimationPlayer))
+            {
+                _auxAnimationPlayer.SpeedScale = 0;
+            }
+        }
+        
         // Update velocity and move
         Velocity = velocity;
         MoveAndSlide();
-        
-        // Look at player
-        if (distanceToPlayer > 0.1f)
-        {
-            Vector3 lookAtPos = new Vector3(_player.GlobalPosition.X, GlobalPosition.Y, _player.GlobalPosition.Z);
-            LookAt(lookAtPos);
-        }
     }
 
     private void PerformMeleeAttack()
     {
-        if (_player == null || _isAttacking) return;
+        if (_player == null || !IsInstanceValid(_player) || _isAttacking) return;
         
         _isAttacking = true;
         
-        if (_animationPlayer != null && _animationPlayer.HasAnimation("attack"))
+        if (_animationPlayer != null && IsInstanceValid(_animationPlayer) && _animationPlayer.HasAnimation("attack"))
         {
             // Store current walk animation state
-            float previousWalkSpeed = _auxAnimationPlayer?.SpeedScale ?? 0.0f;
+            float previousWalkSpeed = (_auxAnimationPlayer != null && IsInstanceValid(_auxAnimationPlayer)) ? 
+                _auxAnimationPlayer.SpeedScale : 0.0f;
             
             // Temporarily pause walk animation
-            if (_auxAnimationPlayer != null)
+            if (_auxAnimationPlayer != null && IsInstanceValid(_auxAnimationPlayer))
             {
                 _auxAnimationPlayer.SpeedScale = 0.0f;
             }
             
             _animationPlayer.Play("attack");
             
+            // Apply damage after a slight delay
             GetTree().CreateTimer(0.5f).Timeout += () =>
             {
-                Vector3 toPlayer = _player.GlobalPosition - GlobalPosition;
-                if (toPlayer.Length() <= AttackRange)
+                if (_player != null && IsInstanceValid(_player))
                 {
-                    if (_player is Player player)
+                    try
                     {
-                        player.TakeDamage(MeleeDamage);
+                        Vector3 toPlayer = _player.GlobalPosition - GlobalPosition;
+                        if (toPlayer.Length() <= AttackRange)
+                        {
+                            if (_player is Player player && IsInstanceValid(player))
+                            {
+                                player.TakeDamage(MeleeDamage);
+                            }
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        _player = null;
                     }
                 }
+                
                 _isAttacking = false;
                 
                 // Restore walk animation
-                if (_auxAnimationPlayer != null)
+                if (_auxAnimationPlayer != null && IsInstanceValid(_auxAnimationPlayer))
                 {
                     _auxAnimationPlayer.SpeedScale = previousWalkSpeed;
                 }
@@ -196,9 +264,17 @@ public partial class Enemy : CharacterBody3D
         }
         else
         {
-            if (_player is Player player)
+            // Fallback if no animation: apply damage immediately
+            if (_player is Player player && IsInstanceValid(player))
             {
-                player.TakeDamage(MeleeDamage);
+                try
+                {
+                    player.TakeDamage(MeleeDamage);
+                }
+                catch (ObjectDisposedException)
+                {
+                    _player = null;
+                }
             }
             _isAttacking = false;
         }
@@ -266,25 +342,18 @@ public partial class Enemy : CharacterBody3D
 
     private void Die()
     {
-        // Drop health potion
-        if (HealthPotionScene != null)
+        // Spawn health potion with 30% chance
+        if (HealthPotionScene != null && GD.Randf() < 0.3f)
         {
-            var potion = HealthPotionScene.Instantiate<Area3D>();
-            GetTree().Root.AddChild(potion);
-            potion.GlobalPosition = GlobalPosition + Vector3.Up * 0.5f; // Spawn slightly above the ground
+            var healthPotion = HealthPotionScene.Instantiate<Node3D>();
+            GetParent().AddChild(healthPotion);
+            healthPotion.GlobalPosition = GlobalPosition + Vector3.Up;
         }
-
-        // Optional: Play death animation
-        if (_animationPlayer != null && _animationPlayer.HasAnimation("death"))
-        {
-            _animationPlayer.Play("death");
-            // Wait for animation to finish before freeing
-            GetTree().CreateTimer(1.0f).Timeout += () => QueueFree();
-        }
-        else
-        {
-            // If no death animation, just free the node
-            QueueFree();
-        }
+        
+        // Create death effect here if desired
+        // For example, particles, sound, etc.
+        
+        // Remove the enemy
+        QueueFree();
     }
 } 
